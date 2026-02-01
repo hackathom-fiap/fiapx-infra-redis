@@ -15,56 +15,60 @@ provider "aws" {
   region = var.aws_region
 }
 
-# Gera uma senha aleatória para o Redis
-resource "random_password" "redis_auth_token" {
+# Gera uma senha aleatória para o usuário do ElastiCache
+resource "random_password" "user_password" {
   length           = 20
   special          = true
   override_special = "!#$%&*()-_=+[]{}<>:?"
 }
 
-# Cria o segredo no AWS Secrets Manager
-resource "aws_secretsmanager_secret" "redis_auth_token" {
-  name = "/${var.project_name}/redis/auth_token"
+# Cria um usuário para o ElastiCache
+resource "aws_elasticache_user" "default" {
+  user_id       = "default-user"
+  user_name     = "default"
+  engine        = "REDIS"
+  access_string = "on ~* +@all"
+  passwords     = [random_password.user_password.result]
+}
+
+# Cria o segredo no AWS Secrets Manager para a senha do usuário
+resource "aws_secretsmanager_secret" "user_password" {
+  name = "/${var.project_name}/redis/user_password"
   tags = {
-    Name = "${var.project_name}-redis-auth-token"
+    Name = "${var.project_name}-redis-user-password"
   }
 }
 
 # Armazena a senha gerada no segredo
-resource "aws_secretsmanager_secret_version" "redis_auth_token" {
-  secret_id     = aws_secretsmanager_secret.redis_auth_token.id
-  secret_string = random_password.redis_auth_token.result
+resource "aws_secretsmanager_secret_version" "user_password" {
+  secret_id     = aws_secretsmanager_secret.user_password.id
+  secret_string = random_password.user_password.result
 }
 
-# Cria uma VPC para isolar nossos recursos
-resource "aws_vpc" "main" {
-  cidr_block = var.vpc_cidr_block
-  tags = {
-    Name = "${var.project_name}-vpc"
-  }
+# Cria um grupo de usuários para o ElastiCache e associa o usuário
+resource "aws_elasticache_user_group" "default" {
+  user_group_id = "${var.project_name}-user-group"
+  engine        = "REDIS"
+  user_ids      = [aws_elasticache_user.default.user_id]
 }
 
-# Cria uma subnet dentro da VPC
-resource "aws_subnet" "main" {
-  vpc_id     = aws_vpc.main.id
-  cidr_block = var.subnet_cidr_block
-  tags = {
-    Name = "${var.project_name}-subnet"
-  }
+# Obtém informações da VPC existente
+data "aws_vpc" "existing" {
+  id = var.vpc_id
 }
 
 # Cria um grupo de segurança para o cluster Redis
 resource "aws_security_group" "redis" {
   name        = "${var.project_name}-redis-sg"
-  description = "Permite acesso à porta do Redis"
-  vpc_id      = aws_vpc.main.id
+  description = "Permite acesso a porta do Redis"
+  vpc_id      = var.vpc_id
 
   # Permite tráfego de entrada na porta do Redis (6379) de qualquer lugar dentro da VPC
   ingress {
     from_port   = 6379
     to_port     = 6379
     protocol    = "tcp"
-    cidr_blocks = [var.vpc_cidr_block]
+    cidr_blocks = [data.aws_vpc.existing.cidr_block]
   }
 
   # Permite todo o tráfego de saída
@@ -83,22 +87,27 @@ resource "aws_security_group" "redis" {
 # Cria um grupo de subnets para o ElastiCache
 resource "aws_elasticache_subnet_group" "redis" {
   name       = "${var.project_name}-subnet-group"
-  subnet_ids = [aws_subnet.main.id]
+  subnet_ids = var.subnet_ids
 }
 
-# Cria o cluster Redis ElastiCache
-resource "aws_elasticache_cluster" "redis" {
-  cluster_id           = "${var.project_name}-cluster"
-  engine               = "redis"
-  node_type            = var.redis_node_type
-  num_cache_nodes      = 1
-  parameter_group_name = "default.redis7"
-  port                 = 6379
-  subnet_group_name    = aws_elasticache_subnet_group.redis.name
-  security_group_ids   = [aws_security_group.redis.id]
-  auth_token           = random_password.redis_auth_token.result
+# Cria o grupo de replicação ElastiCache
+resource "aws_elasticache_replication_group" "redis" {
+  replication_group_id          = "${var.project_name}-replication-group"
+  description                   = "${var.project_name} Valkey/Redis replication group"
+  engine                        = "redis"
+  engine_version                = "7.0"
+  node_type                     = var.redis_node_type
+  port                          = 6379
+  subnet_group_name             = aws_elasticache_subnet_group.redis.name
+  security_group_ids            = [aws_security_group.redis.id]
+  user_group_ids                = [aws_elasticache_user_group.default.id]
+  transit_encryption_enabled    = true
+  
+  # Configuração para um cluster multi-AZ com um primário e uma réplica
+  num_cache_clusters          = 2
+  automatic_failover_enabled    = true
 
   tags = {
-    Name = "${var.project_name}-cluster"
+    Name = "${var.project_name}-replication-group"
   }
 }
