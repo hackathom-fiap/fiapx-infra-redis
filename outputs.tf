@@ -22,3 +22,8 @@ output "elasticache_user_password_secret_arn" {
   description = "ARN do segredo no AWS Secrets Manager que contém a senha do usuário."
   value       = aws_secretsmanager_secret.user_password.arn
 }
+
+output "redis_security_group_id" {
+  description = "ID do Security Group do Redis ElastiCache."
+  value       = aws_security_group.redis.id
+}
