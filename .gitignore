@@ -1,0 +1,21 @@
+# Arquivos de estado locais do Terraform
+*.tfstate
+*.tfstate.*
+
+# Arquivos de lock do provedor
+# Este arquivo deve ser versionado, mas pode ser ignorado em alguns fluxos.
+# Descomente a linha abaixo se não quiser versioná-lo.
+# .terraform.lock.hcl
+
+# Diretórios .terraform locais
+.terraform/
+
+# Arquivos de log de erro
+crash.log
+
+
+
+# Ignorar arquivos do sistema operacional
+.DS_Store
+*~
+*.swp
