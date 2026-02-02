@@ -30,18 +30,13 @@ jobs:
     if: github.event.inputs.confirm_destroy == 'true'
     runs-on: ubuntu-latest
 
-    defaults:
-      run:
-        shell: bash
-        working-directory: ./terraform # Indica que os comandos devem rodar na pasta terraform
-
     steps:
       - name: Checkout
         uses: actions/checkout@v4
       - name: Configure AWS Credentials
         uses: aws-actions/configure-aws-credentials@v4
         with:
-          role-to-assume: ${{ secrets.AWS_ROLE_ARN }}
+          role-to-assume: ${{ secrets.AWS_ROLE_TO_ASSUME }}
           aws-region: us-east-1
           audience: sts.amazonaws.com
       - name: Setup Terraform
