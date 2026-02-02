@@ -30,11 +30,6 @@ jobs:
     if: github.event.inputs.confirm_destroy == 'true'
     runs-on: ubuntu-latest
 
-    defaults:
-      run:
-        shell: bash
-        working-directory: ./terraform # Indica que os comandos devem rodar na pasta terraform
-
     steps:
       - name: Checkout
         uses: actions/checkout@v4
