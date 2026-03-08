@@ -12,7 +12,7 @@ vpc_id = "vpc-8ce247f1"
 
 # A lista de IDs de subnets existentes onde o cluster ElastiCache será implantado.
 
-subnet_ids = ["subnet-c3f47da5", "subnet-8a652684"]
+subnet_ids = ["subnet-8a652684", "subnet-c3f47da5"]
 
 # Tipo de nó para o cluster Redis ElastiCache (ex: "cache.t2.micro")
 redis_node_type = "cache.t3.micro"
