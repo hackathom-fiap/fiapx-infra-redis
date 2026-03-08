@@ -33,7 +33,7 @@ resource "aws_elasticache_user" "default" {
 
 # Cria o segredo no AWS Secrets Manager para a senha do usuário
 resource "aws_secretsmanager_secret" "user_password" {
-  name = "/${var.project_name}/redis/user_password-v3"
+  name = "/${var.project_name}/redis/user_password-v4"
   tags = {
     Name = "${var.project_name}-redis-user-password"
   }
