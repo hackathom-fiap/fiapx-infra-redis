@@ -1,68 +1,145 @@
-# Infraestrutura do Redis com Terraform e GitHub Actions
+# Solucao FIAP X - Infraestrutura EKS e Arquitetura do Sistema
 
-Este projeto provisiona um cluster Redis (AWS ElastiCache) usando Terraform e automatiza o deploy com GitHub Actions.
+## Integrantes - Grupo 250 do Hackathon FIAP
+*   Thiago Frozzi Ramos - RM363916
+*   Denise da Silva Ferreira - RM360753
+*   Humberto Moura Feitoza - RM360753
 
-A senha para o cluster Redis é **gerada automaticamente** e armazenada de forma segura no **AWS Secrets Manager**.
+---
+## Video da apresentação do Hackathon
 
-## Passos para o Deploy
+*   [Apresentação do Hackathon](https://youtu.be/mbDetKJVOo4)
 
-### 1. Crie um usuário IAM na AWS
+## Arquitetura do Sistema
 
-Para que o GitHub Actions possa se autenticar na sua conta AWS, você precisa de um usuário IAM com as permissões necessárias.
+O sistema foi concebido como uma plataforma de Processamento Distribuido de Videos, utilizando uma arquitetura orientada a eventos (Event-Driven) para garantir escalabilidade e resiliencia. A solucao roda em um cluster Amazon EKS (Kubernetes) e utiliza servicos gerenciados da AWS para persistencia e mensageria.
 
-- **Crie um usuário IAM:** No console da AWS, vá para o serviço IAM e crie um novo usuário.
-- **Anexe permissões:** Para este projeto, o usuário precisará de permissões para gerenciar VPC, ElastiCache e Secrets Manager. Para simplificar, você pode anexar a política gerenciada `AdministratorAccess`.
-  - **Atenção:** Para produção, é altamente recomendável criar uma política com permissões mais restritas.
-- **Gere as chaves de acesso:** Crie uma chave de acesso (Access Key ID e Secret Access Key) para este usuário.
+### Componentes Principais
 
-### 2. Configure os Segredos no GitHub
+#### 1. Entrada e Seguranca (Edge & Auth)
+*   **API Gateway:** Ponto unico de entrada para todas as requisicoes externas.
+*   **Auth Service (fiapx-app-auth):** Microsservico dedicado a autenticacao e autorizacao. Utiliza JWT para trafego seguro e Redis para gestao de sessoes e performance.
 
-O workflow do GitHub Actions precisa das chaves de acesso para se autenticar na AWS.
+#### 2. Orquestracao e Upload (Core)
+*   **Video API (fiapx-app-api):** Gerencia o ciclo de vida inicial do video. Recebe o upload, armazena o binario bruto no Amazon S3, registra metadados no PostgreSQL e dispara eventos de processamento.
 
-1.  Vá para o seu repositório no GitHub.
-2.  Clique em **Settings** > **Secrets and variables** > **Actions**.
-3.  Clique em **New repository secret** para adicionar os seguintes segredos:
-    -   `AWS_ACCESS_KEY_ID`: Cole a "Access Key ID" do seu usuário IAM.
-    -   `AWS_SECRET_ACCESS_KEY`: Cole a "Secret Access Key" do seu usuário IAM.
+#### 3. Processamento Assincrono (Worker)
+*   **Worker Processor (fiapx-app-worker):** O componente de "heavy lifting". Consome mensagens do RabbitMQ, baixa o video do S3, realiza o processamento (extracao de imagens/frames) e gera um arquivo compactado (ZIP) de retorno.
 
-### 3. Faça o Push para o Repositório
+#### 4. Camada de Dados e Mensageria
+*   **Amazon RDS (PostgreSQL):** Banco de dados relacional para metadados de videos e usuarios.
+*   **Amazon MQ (RabbitMQ):** Broker de mensagens para desacoplamento entre a API e o Worker.
+*   **Amazon S3:** Storage de objetos para videos originais e arquivos processados.
+*   **ElastiCache (Redis):** Cache de alta performance para o servico de autenticacao.
 
-Com os arquivos no repositório e os segredos configurados, envie o código.
+---
 
-```bash
-git add .
-git commit -m "feat: Implementa geração automática de senha com Secrets Manager"
-git push
+### Principais Endpoints da API
+
+| Microsservico | Metodo | Rota | Descricao |
+| :--- | :--- | :--- | :--- |
+| **Auth** | `POST` | `/api/auth/register` | Realiza o cadastro de um novo usuario. |
+| **Auth** | `POST` | `/api/auth/login` | Autentica o usuario e retorna o token JWT. |
+| **Video API** | `POST` | `/api/videos/upload` | Recebe um ou mais videos para processamento. |
+| **Video API** | `GET` | `/api/videos/status` | Lista o status de todos os videos do usuario logado. |
+| **Video API** | `POST` | `/api/videos/{id}/status` | Endpoint interno para atualizacao de status (usado pelo Worker). |
+
+## SonarQube
+
+*   [SonarQube](https://sonarcloud.io/projects?sort=name)
+*   Cobertura de Testes:
+![Cobertura de Testes](Cobertura-Sonar.png)
+
+## Repositorios do Hackathon
+
+### Infraestrutura
+*   [Infra EKS (Kubernetes)](https://github.com/hackathom-fiap/fiapx-infra-eks)
+*   [Infra Fila (AmazonMQ)](https://github.com/hackathom-fiap/fiapx-infra-amazonmq)
+*   [Infra Database (PostgreSQL)](https://github.com/hackathom-fiap/fiapx-infra-postgres)
+*   [Infra Redis](https://github.com/hackathom-fiap/fiapx-infra-redis)
+*   [Infra IAM Roles](https://github.com/hackathom-fiap/fiapx-infra-roles)
+
+### Microserviços (APIs)
+*   [App Auth](https://github.com/hackathom-fiap/fiapx-app-auth)
+*   [App Api](https://github.com/hackathom-fiap/fiapx-app-api)
+*   [App Worker](https://github.com/hackathom-fiap/fiapx-app-worker)
+
+---
+
+### Diagrama de Arquitetura
+
+```mermaid
+graph TD
+    %% Definicao de Estilos
+    classDef client fill:#f9f9f9,stroke:#333,stroke-width:2px;
+    classDef aws fill:#FF9900,stroke:#232F3E,stroke-width:2px,color:white;
+    classDef k8s fill:#326ce5,stroke:#fff,stroke-width:2px,color:white;
+    classDef db fill:#336791,stroke:#fff,stroke-width:2px,color:white;
+    classDef queue fill:#FF6600,stroke:#fff,stroke-width:2px,color:white;
+
+    %% Atores
+    User((Usuario))
+
+    subgraph AWS [AWS Cloud]
+        
+        Gateway[API Gateway]:::aws
+        
+        subgraph EKS [EKS Cluster - Kubernetes]
+            direction TB
+            Auth[Auth Service]:::k8s
+            API[Video API]:::k8s
+            Worker[Worker Processor]:::k8s
+        end
+
+        subgraph Storage [Camada de Persistencia]
+            S3[(Amazon S3)]:::aws
+            subgraph RDS [Amazon RDS - PostgreSQL]
+                DB_A[(auth_db)]:::db
+                DB_API[(api-db)]:::db
+            end
+            Redis[(Redis)]:::db
+        end
+
+        subgraph Messaging [Mensageria]
+            MQ[(RabbitMQ)]:::queue
+        end
+    end
+
+    %% Fluxos
+    User -->|1. Login / Upload| Gateway
+    Gateway --> Auth
+    Gateway --> API
+
+    Auth -->|Valida Token| Redis
+    Auth -->|Valida/Cria Usuario| DB_A
+    API -->|2. Salva Video Bruto| S3
+    API -->|3. Registra Metadados| DB_API
+    API -->|4. Notifica Upload| MQ
+
+    MQ -->|5. Consome Evento| Worker
+    Worker -->|6. Processa Video| S3
+    Worker -->|7. Atualiza Status via HTTP| API
+    API -->|8. Persiste Status| DB_API
 ```
 
-### 4. Acompanhe o Deploy
+---
 
-Ao fazer o push para a branch `main`, o workflow do GitHub Actions será acionado. Acompanhe o processo na aba **Actions** do seu repositório.
+## Stack Tecnologica
 
-### 5. Como Encontrar a Senha e o Endpoint do Redis
+*   **Linguagem:** Java 17
+*   **Framework:** Spring Boot 3.2.2
+*   **Seguranca:** Spring Security + JWT
+*   **Infraestrutura:** Terraform (IaC), AWS EKS, Docker
+*   **Mensageria:** RabbitMQ (Protocolo AMQP)
+*   **Qualidade:** JaCoCo e SonarCloud
 
-Após o deploy, a senha **não** ficará visível nos logs do GitHub. Você deve recuperá-la diretamente do AWS Secrets Manager.
+---
 
-#### Usando o Console da AWS
+## Diferenciais da Solucao (Hackathon)
 
-1.  Vá para o serviço **AWS Secrets Manager** no console.
-2.  Procure pelo segredo com o nome `/fiapx-redis/redis/auth_token` (ou similar, baseado no `project_name`).
-3.  Clique no segredo e depois em **"Retrieve secret value"** para ver a senha.
+1.  **Escalabilidade Horizontal:** O Worker Processor pode ser escalado independentemente da API (usando K8s HPA) conforme a fila do RabbitMQ cresce.
+2.  **Arquitetura Hexagonal:** O uso de Ports and Adapters na Video API permite trocar o banco de dados ou o provider de nuvem com minimo impacto.
+3.  **Seguranca Stateless:** Toda a comunicacao e protegida por JWT, eliminando a necessidade de manter estado de sessao no servidor da API.
+4.  **Resiliencia:** Se o Worker falhar, a mensagem volta para a fila, garantindo que nenhum video deixe de ser processado.
 
-#### Usando a AWS CLI
-
-Você pode usar o ARN do segredo (que aparece nos outputs do Terraform) para buscar a senha.
-
-```bash
-# Exemplo de como obter o ARN do output do Terraform
-SECRET_ARN=$(terraform output -raw redis_auth_token_secret_arn)
-
-# Comando para buscar o valor do segredo
-aws secretsmanager get-secret-value --secret-id $SECRET_ARN --query SecretString --output text
-```
-
-O endpoint do Redis pode ser obtido via output do Terraform:
-
-```bash
-terraform output redis_endpoint
-```
+---
